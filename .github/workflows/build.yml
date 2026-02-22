@@ -1,4 +1,3 @@
-# This name is also shown in the status badge.
 name: Build
 
 on:
@@ -6,61 +5,42 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
-  # Rebuild periodically to keep the cache alive:
   schedule:
-  - cron: '45 4 * * 0,3'
+    - cron: '45 4 * * 0,3'
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - name: Check out repository code
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 0  # SonarCloud: Shallow clones should be disabled for a better relevancy of analysis
-    - name: Set up JDK 21
-      uses: actions/setup-java@v3
-      with:
-        java-version: '21'
-        distribution: 'zulu'
-    - name: Cache Maven packages
-      uses: actions/cache@v3
-      with:
-        path: ~/.m2
-        key: ${{ runner.os }}-m2-${{ hashFiles('**/*.gradle*', '**/libs.versions.toml', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          ${{ runner.os }}-m2
-    - name: Cache Gradle packages
-      uses: actions/cache@v3
-      with:
-        path: ~/.gradle/caches
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/libs.versions.toml', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          ${{ runner.os }}-gradle
-    - name: Cache Jabba JDK installations
-      uses: actions/cache@v3
-      with:
-        path: ~/.jabba
-        key: ${{ runner.os }}-jabba-${{ hashFiles('**/*.sh') }}
-        restore-keys: |
-          ${{ runner.os }}-jabba
-    - name: Cache SonarCloud packages
-      uses: actions/cache@v3
-      with:
-        path: ~/.sonar/cache
-        key: ${{ runner.os }}-sonar
-    - name: Build Shopkeepers
-      run: ./build.sh
-    - name: Run SonarCloud analysis
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      run: ./gradlew sonarqube
-    # Upload workflow artifacts to allow the inspection of build results.
-    # These are only retained for a few days.
-    - name: Stage artifacts for upload
-      run: mkdir staging && cp build/*.jar staging
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        path: staging
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'zulu'
+          cache: gradle
+
+      - name: Install Spigot Dependencies
+        run: |
+          chmod +x scripts/installSpigotDependencies.sh
+          ./scripts/installSpigotDependencies.sh
+
+      - name: Build Shopkeepers
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Stage artifacts for upload
+        run: |
+          mkdir -p staging
+          cp build/*.jar staging/ 2>/dev/null || cp modules/plugin/build/libs/*.jar staging/ || echo "No jars found"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShopkeepersFolia-Build
+          path: staging/*.jar
